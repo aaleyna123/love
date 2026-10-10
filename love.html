@@ -1,0 +1,370 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Love Heart ❤️</title>
+
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        background: #060208;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+    }
+
+    canvas {
+        width: min(800px, 100vw, 100vh);
+        height: min(800px, 100vw, 100vh);
+        display: block;
+    }
+</style>
+</head>
+
+<body>
+
+<canvas id="heartCanvas" width="800" height="800"></canvas>
+
+<script>
+const canvas = document.getElementById("heartCanvas");
+const ctx = canvas.getContext("2d");
+
+const SC = 21;
+const GAP = 7;
+const DURATION = 10000;
+const ANIM = 42;
+const LIFT = 34;
+const FONT = "Arial";
+
+const BG = "#060208";
+const FLASH = [1, 0.78, 0.78];
+
+const PHRASES = [
+    "I love you", "Seni seviyorum", "Te amo",
+    "Je t'aime", "Ich liebe dich", "Ti amo",
+    "Eu te amo", "Я тебя люблю", "사랑해",
+    "愛してる", "我爱你", "मैं तुमसे प्यार करता हूँ",
+    "Σ' αγαπώ", "Ik hou van jou", "Jag älskar dig",
+    "Kocham cię", "ฉันรักเธอ", "Anh yêu em",
+    "Aku cinta kamu", "Я тебе кохаю"
+];
+
+const SIZES = [9, 10, 11, 12];
+
+let seed = 11;
+
+function random() {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+}
+
+function choice(arr) {
+    return arr[Math.floor(random() * arr.length)];
+}
+
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function heart(a) {
+    const x = 16 * Math.pow(Math.sin(a), 3);
+
+    const y =
+        13 * Math.cos(a)
+        - 5 * Math.cos(2 * a)
+        - 2 * Math.cos(3 * a)
+        - Math.cos(4 * a);
+
+    return {
+        x: 400 + x * SC,
+        y: 400 - (y * SC + 20)
+    };
+}
+
+function mix(a, b, k) {
+    return a.map((v, i) => v + (b[i] - v) * k);
+}
+
+function dim(c, k) {
+    return c.map(v => v * k);
+}
+
+function hex(c) {
+    return "#" + c.map(v =>
+        Math.round(Math.max(0, Math.min(1, v)) * 255)
+            .toString(16).padStart(2, "0")
+    ).join("");
+}
+
+function clamp(v) {
+    return Math.max(0, Math.min(1, v));
+}
+
+function distance(x, y) {
+    return Math.hypot(
+        (x - 400) / (16 * SC),
+        (y - 400) / (14.5 * SC)
+    );
+}
+
+const POLY = Array.from(
+    { length: 720 },
+    (_, i) => heart(2 * Math.PI * i / 720)
+);
+
+const YMAX = Math.max(...POLY.map(p => p.y));
+const YMIN = Math.min(...POLY.map(p => p.y));
+
+function spans(y) {
+    const xs = [];
+
+    for (let i = 0; i < POLY.length; i++) {
+        const a = POLY[i];
+        const b = POLY[(i + 1) % POLY.length];
+
+        if ((a.y <= y && y < b.y) ||
+            (b.y <= y && y < a.y)) {
+            xs.push(
+                a.x + (y - a.y) *
+                (b.x - a.x) / (b.y - a.y)
+            );
+        }
+    }
+
+    xs.sort((a, b) => a - b);
+
+    const result = [];
+
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+        result.push([xs[i], xs[i + 1]]);
+    }
+
+    return result;
+}
+
+function intersect(a, b) {
+    const out = [];
+
+    for (const A of a) {
+        for (const B of b) {
+            const lo = Math.max(A[0], B[0]);
+            const hi = Math.min(A[1], B[1]);
+
+            if (hi - lo > 14) {
+                out.push([lo, hi]);
+            }
+        }
+    }
+
+    return out;
+}
+
+function phraseCycle() {
+    let order = [];
+
+    return () => {
+        if (order.length === 0) {
+            order = shuffle([...PHRASES]);
+        }
+
+        return order.pop();
+    };
+}
+
+function build() {
+    const nextPhrase = phraseCycle();
+    const rowH = 18;
+    const placed = [];
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (let size of SIZES) {
+        ctx.font = `bold ${size}px ${FONT}`;
+    }
+
+    for (let y = YMAX - rowH / 2;
+         y > YMIN + rowH / 2;
+         y -= rowH) {
+
+        const rows = intersect(
+            spans(y + rowH / 2),
+            spans(y - rowH / 2)
+        );
+
+        for (const [start, end] of rows) {
+            const lo = start + 4;
+            const hi = end - 4;
+
+            let cur = lo + random() * 8;
+            const line = [];
+
+            while (true) {
+                let fit = null;
+
+                for (let attempt = 0; attempt < 10; attempt++) {
+                    const text = nextPhrase();
+                    const size = choice(SIZES);
+
+                    ctx.font = `bold ${size}px ${FONT}`;
+                    const w = ctx.measureText(text).width;
+
+                    if (cur + w <= hi) {
+                        fit = { text, size, w };
+                        break;
+                    }
+                }
+
+                if (!fit) break;
+
+                line.push({
+                    x: cur + fit.w / 2,
+                    y,
+                    ...fit
+                });
+
+                cur += fit.w + GAP;
+            }
+
+            if (!line.length) continue;
+
+            if (line.length > 1) {
+                const last = line[line.length - 1];
+                const left = hi - (last.x + last.w / 2);
+
+                line.forEach((p, i) => {
+                    p.x += left * i / (line.length - 1);
+                });
+            } else {
+                line[0].x = (lo + hi) / 2;
+            }
+
+            line.forEach((p, i) => {
+                p.edge = i === 0 || i === line.length - 1;
+                placed.push(p);
+            });
+        }
+    }
+
+    const wine = [0.58, 0, 0.09];
+    const crimson = [0.90, 0.05, 0.14];
+    const blood = [0.98, 0.10, 0.16];
+
+    for (const p of placed) {
+        p.rad = Math.min(1, distance(p.x, p.y));
+
+        let base = mix(wine, crimson, 0.25 + 0.75 * p.rad);
+
+        base = mix(
+            base,
+            blood,
+            random() * 0.35 + (p.edge ? 0.3 : 0)
+        );
+
+        p.color = base.map(v => Math.min(1, v));
+        p.start = 0;
+        p.dx = random() * 20 - 10;
+    }
+
+    const edges = placed.filter(p => p.edge);
+    const inner = placed.filter(p => !p.edge);
+
+    inner.sort((a, b) => b.rad - a.rad);
+
+    return [...edges, ...inner];
+}
+
+const ITEMS = build();
+const started = performance.now();
+
+function drawText(p, color, x, y, size = p.size) {
+    ctx.font = `bold ${size}px ${FONT}`;
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(p.text, x, y);
+}
+
+function animate(now) {
+    ctx.clearRect(0, 0, 800, 800);
+
+    const elapsed = now - started;
+    const interval = DURATION / ITEMS.length;
+    const visibleCount = Math.min(
+        ITEMS.length,
+        Math.floor(elapsed / interval) + 1
+    );
+
+    for (let i = 0; i < visibleCount; i++) {
+        const p = ITEMS[i];
+
+        const age = elapsed - i * interval;
+        const u = clamp(age / (ANIM * 16));
+        const e = 1 - Math.pow(1 - u, 3);
+
+        const x = p.x + p.dx * (1 - e);
+        const y = p.y - LIFT * (1 - e);
+
+        // Gölge
+        drawText(p, hex(dim(p.color, 0.30)), x + 2, y + 3);
+
+        // Parlama katmanı
+        drawText(
+            p,
+            hex(dim(p.color, 0.20)),
+            x,
+            y,
+            p.size + 1
+        );
+
+        // Ana yazı ve kısa ışık parlaması
+        const flash = 0.75 * Math.sin(
+            Math.PI * clamp((u - 0.55) / 0.45)
+        );
+
+        let col = mix(
+            BG === "#060208" ? [6/255, 2/255, 8/255] : [0, 0, 0],
+            p.color,
+            Math.pow(e, 1.5)
+        );
+
+        col = mix(col, FLASH, flash);
+
+        drawText(p, hex(col), x, y);
+    }
+
+    // Kalp tamamlandığında rastgele yazılar ışıldasın.
+    if (elapsed > DURATION + 700) {
+        const p = ITEMS[Math.floor(random() * ITEMS.length)];
+        const glow = mix(p.color, FLASH, 0.6);
+
+        ctx.save();
+        ctx.shadowColor = hex(glow);
+        ctx.shadowBlur = 12;
+        drawText(p, hex(glow), p.x, p.y);
+        ctx.restore();
+    }
+
+    requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+</script>
+
+</body>
+</html>
+</body>
+</html>
